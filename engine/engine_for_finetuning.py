@@ -14,7 +14,7 @@ import torch
 from timm.data import Mixup
 from timm.utils import accuracy, ModelEma
 
-import utils
+import utils.utils as utils
 
 
 def train_class_batch(model, samples, target, criterion):

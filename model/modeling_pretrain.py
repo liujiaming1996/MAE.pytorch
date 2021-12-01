@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from functools import partial, reduce
 from operator import mul
 
-from modeling_finetune import Block, _cfg, PatchEmbed, get_sinusoid_encoding_table
+from .modeling_finetune import Block, _cfg, PatchEmbed
 from timm.models.registry import register_model
 from timm.models.layers import trunc_normal_ as __call_trunc_normal_
 

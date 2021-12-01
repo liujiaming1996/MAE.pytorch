@@ -10,24 +10,25 @@ import argparse
 import datetime
 import json
 import os
-import random
+# import random
 import time
-from pathlib import Path
 import warnings
+from pathlib import Path
+
 warnings.filterwarnings("ignore")
 
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.utils.data as data
+
 from timm.models import create_model
 
-import modeling_pretrain
-import utils
-from datasets import build_pretraining_dataset
-from engine_for_pretraining import train_one_epoch
-from optim_factory import create_optimizer
-from utils import NativeScalerWithGradNormCount as NativeScaler
+import utils.utils as utils
+from dataset.datasets import build_pretraining_dataset
+from model.engine_for_pretraining import train_one_epoch
+from utils.optim_factory import create_optimizer
+from utils.utils import NativeScalerWithGradNormCount as NativeScaler
 
 
 def get_args():

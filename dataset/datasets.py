@@ -15,8 +15,8 @@ from timm.data.constants import \
 
 from timm.data import create_transform
 
-from masking_generator import RandomMaskingGenerator
-from dataset_folder import ImageFolder, ImageFolderLMDB
+from .masking_generator import RandomMaskingGenerator
+from .dataset_folder import ImageFolder, ImageFolderLMDB
 
 
 class DataAugmentationForMAE(object):
