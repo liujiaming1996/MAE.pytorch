@@ -24,9 +24,9 @@ The positional embeddings mentioned in the paper are `sine-cosine` version. And 
 - [x] add the `cls` token in the encoder
 - [x] visualization of reconstruction image
 - [ ] knn and linear prob
-- [x]2D `sine-cosine` position embeddings
-- [x]Fine-tuning semantic segmentation on Cityscapes & ADE20K
-- [x]Fine-tuning instance segmentation on COCO
+- [x] 2D `sine-cosine` position embeddings
+- [x] Fine-tuning semantic segmentation on Cityscapes & ADE20K
+- [x] Fine-tuning instance segmentation on COCO
 
 ## Setup
 
