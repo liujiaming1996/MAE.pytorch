@@ -57,7 +57,7 @@ python run_mae_vis.py ${IMAGE_PATH} ${OUTPUT_DIR} ${MODEL_PATH}
 
 |   model  | pretrain | finetune | accuracy | log | weight |
 |:--------:|:--------:|:--------:|:--------:| :--------:|:--------:|
-| vit-base |800e (unnormed pixel)|   100e   |   83.2%  | - | - |
+| vit-base |800e (normed pixel)|   100e   |   83.2%  | - | - |
 <!-- | vit-large| 400e    | 50e      | 84.5%    | - | - | -->
 
 I'm really appreaciate for your star!

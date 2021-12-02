@@ -27,6 +27,7 @@ from timm.models import create_model
 import utils.utils as utils
 from dataset.datasets import build_pretraining_dataset
 from engine.engine_for_pretraining import train_one_epoch
+import model.modeling_pretrain
 from utils.optim_factory import create_optimizer
 from utils.utils import NativeScalerWithGradNormCount as NativeScaler
 
@@ -50,7 +51,7 @@ def get_args():
     parser.add_argument('--drop_path', type=float, default=0.0, metavar='PCT',
                         help='Drop path rate (default: 0.1)')
 
-    parser.add_argument('--normlize_target', default=True, type=bool,
+    parser.add_argument('--normlize_target', default=False, type=bool,
                         help='normalized the target patch pixels')
 
     # Optimizer parameters
