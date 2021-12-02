@@ -25,7 +25,7 @@ from timm.utils import ModelEma
 
 import utils.utils as utils
 from dataset.datasets import build_dataset
-from model.engine_for_finetuning import evaluate, train_one_epoch
+from engine.engine_for_finetuning import evaluate, train_one_epoch
 from utils.optim_factory import (LayerDecayValueAssigner, create_optimizer,
                                  get_parameter_groups)
 from utils.utils import NativeScalerWithGradNormCount as NativeScaler

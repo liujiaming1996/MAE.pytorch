@@ -26,7 +26,7 @@ from timm.models import create_model
 
 import utils.utils as utils
 from dataset.datasets import build_pretraining_dataset
-from model.engine_for_pretraining import train_one_epoch
+from engine.engine_for_pretraining import train_one_epoch
 from utils.optim_factory import create_optimizer
 from utils.utils import NativeScalerWithGradNormCount as NativeScaler
 
