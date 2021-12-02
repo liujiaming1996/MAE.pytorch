@@ -12,7 +12,7 @@
 # --------------------------------------------------------'
 # recommand use this config for BEiT models which are self-supervised pretrained on imagenet
 _base_ = [
-    '../../_base_/models/upernet_mae.py', '../../_base_/datasets/ade20k_512x512.py',
+    '../../_base_/models/upernet_beit.py', '../../_base_/datasets/ade20k_512x512.py',
     '../../_base_/default_runtime.py', '../../_base_/schedules/schedule_160k.py'
 ]
 crop_size = (512, 512)
@@ -62,17 +62,17 @@ lr_config = dict(_delete_=True, policy='poly',
                  power=1.0, min_lr=0.0, by_epoch=False)
 
 # By default, models are trained on 8 GPUs with 2 images per GPU
-data=dict(samples_per_gpu=2)
+data=dict(samples_per_gpu=4)
 
-runner = dict(type='IterBasedRunnerAmp')
+# runner = dict(type='IterBasedRunnerAmp')
 
-# do not use mmdet version fp16
-fp16 = None
-optimizer_config = dict(
-    type="DistOptimizerHook",
-    update_interval=1,
-    grad_clip=None,
-    coalesce=True,
-    bucket_size_mb=-1,
-    use_fp16=True,
-)
+# # do not use mmdet version fp16
+# fp16 = None
+# optimizer_config = dict(
+#     type="DistOptimizerHook",
+#     update_interval=1,
+#     grad_clip=None,
+#     coalesce=True,
+#     bucket_size_mb=-1,
+#     use_fp16=True,
+# )

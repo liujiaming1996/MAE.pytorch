@@ -52,13 +52,14 @@ class Mlp(nn.Module):
 class Attention(nn.Module):
     def __init__(
             self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0.,
-            proj_drop=0., attn_head_dim=None):
+            proj_drop=0., window_size=None, attn_head_dim=None):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
         if attn_head_dim is not None:
             head_dim = attn_head_dim
         all_head_dim = head_dim * self.num_heads
+        # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = qk_scale or head_dim ** -0.5
 
         self.qkv = nn.Linear(dim, all_head_dim * 3, bias=False)
@@ -69,11 +70,43 @@ class Attention(nn.Module):
             self.q_bias = None
             self.v_bias = None
 
+        if window_size:
+            self.window_size = window_size
+            self.num_relative_distance = (2 * window_size[0] - 1) * (2 * window_size[1] - 1) + 3
+            self.relative_position_bias_table = nn.Parameter(
+                torch.zeros(self.num_relative_distance, num_heads))  # 2*Wh-1 * 2*Ww-1, nH
+            # cls to token & token 2 cls & cls to cls
+
+            # get pair-wise relative position index for each token inside the window
+            coords_h = torch.arange(window_size[0])
+            coords_w = torch.arange(window_size[1])
+            coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+            coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
+            relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+            relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+            relative_coords[:, :, 0] += window_size[0] - 1  # shift to start from 0
+            relative_coords[:, :, 1] += window_size[1] - 1
+            relative_coords[:, :, 0] *= 2 * window_size[1] - 1
+            relative_position_index = \
+                torch.zeros(size=(window_size[0] * window_size[1] + 1, ) * 2, dtype=relative_coords.dtype)
+            relative_position_index[1:, 1:] = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+            relative_position_index[0, 0:] = self.num_relative_distance - 3
+            relative_position_index[0:, 0] = self.num_relative_distance - 2
+            relative_position_index[0, 0] = self.num_relative_distance - 1
+
+            self.register_buffer("relative_position_index", relative_position_index)
+
+            # trunc_normal_(self.relative_position_bias_table, std=.0)
+        else:
+            self.window_size = None
+            self.relative_position_bias_table = None
+            self.relative_position_index = None
+
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(all_head_dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x):
+    def forward(self, x, rel_pos_bias=None):
         B, N, C = x.shape
         qkv_bias = None
         if self.q_bias is not None:
@@ -85,6 +118,18 @@ class Attention(nn.Module):
 
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))
+
+        if self.relative_position_bias_table is not None:
+            relative_position_bias = \
+                self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
+                    self.window_size[0] * self.window_size[1] + 1,
+                    self.window_size[0] * self.window_size[1] + 1, -1)  # Wh*Ww,Wh*Ww,nH
+            relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+            attn = attn + relative_position_bias.unsqueeze(0)
+
+        if rel_pos_bias is not None:
+            attn = attn + rel_pos_bias
+        
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
@@ -98,30 +143,30 @@ class Block(nn.Module):
 
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., init_values=None, act_layer=nn.GELU, norm_layer=nn.LayerNorm,
-                 attn_head_dim=None):
+                 attn_head_dim=None, window_size=None):
         super().__init__()
         self.norm1 = norm_layer(dim)
         self.attn = Attention(
             dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
-            attn_drop=attn_drop, proj_drop=drop, attn_head_dim=attn_head_dim)
+            attn_drop=attn_drop, proj_drop=drop, window_size=window_size, attn_head_dim=attn_head_dim)
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
-        if init_values > 0:
+        if init_values is not None:
             self.gamma_1 = nn.Parameter(init_values * torch.ones((dim)),requires_grad=True)
             self.gamma_2 = nn.Parameter(init_values * torch.ones((dim)),requires_grad=True)
         else:
             self.gamma_1, self.gamma_2 = None, None
 
-    def forward(self, x):
+    def forward(self, x, rel_pos_bias=None):
         if self.gamma_1 is None:
-            x = x + self.drop_path(self.attn(self.norm1(x)))
+            x = x + self.drop_path(self.attn(self.norm1(x), rel_pos_bias=rel_pos_bias))
             x = x + self.drop_path(self.mlp(self.norm2(x)))
         else:
-            x = x + self.drop_path(self.gamma_1 * self.attn(self.norm1(x)))
+            x = x + self.drop_path(self.gamma_1 * self.attn(self.norm1(x), rel_pos_bias=rel_pos_bias))
             x = x + self.drop_path(self.gamma_2 * self.mlp(self.norm2(x)))
         return x
 
@@ -215,7 +260,8 @@ class MAE(nn.Module):
                  use_abs_pos_emb=True,
                  use_rel_pos_bias=False,
                  use_shared_rel_pos_bias=False,
-                 out_indices=[3, 5, 7, 11]):
+                 out_indices=[3, 5, 7, 11],
+                 pretrained=None):
         super().__init__()
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
@@ -223,6 +269,7 @@ class MAE(nn.Module):
         self.patch_embed = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         self.out_indices = out_indices
+        self.pretrained = pretrained
         # class token
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         trunc_normal_(self.cls_token, std=.02)
@@ -252,47 +299,36 @@ class MAE(nn.Module):
         # fpn neck
         self.out_indices = out_indices
         if patch_size == 16:
-            fpn1 = nn.Sequential(
+            self.fpn1 = nn.Sequential(
                 nn.ConvTranspose2d(embed_dim, embed_dim, kernel_size=2, stride=2),
                 nn.SyncBatchNorm(embed_dim),
                 nn.GELU(),
                 nn.ConvTranspose2d(embed_dim, embed_dim, kernel_size=2, stride=2),
             )
 
-            fpn2 = nn.Sequential(
+            self.fpn2 = nn.Sequential(
                 nn.ConvTranspose2d(embed_dim, embed_dim, kernel_size=2, stride=2),
             )
 
-            fpn3 = nn.Identity()
+            self.fpn3 = nn.Identity()
 
-            fpn4 = nn.MaxPool2d(kernel_size=2, stride=2)
+            self.fpn4 = nn.MaxPool2d(kernel_size=2, stride=2)
         elif patch_size == 8:
-            fpn1 = nn.Sequential(
+            self.fpn1 = nn.Sequential(
                 nn.ConvTranspose2d(embed_dim, embed_dim, kernel_size=2, stride=2),
             )
 
-            fpn2 = nn.Identity()
+            self.fpn2 = nn.Identity()
 
-            fpn3 = nn.Sequential(
+            self.fpn3 = nn.Sequential(
                 nn.MaxPool2d(kernel_size=2, stride=2),
             )
 
-            fpn4 = nn.Sequential(
+            self.fpn4 = nn.Sequential(
                 nn.MaxPool2d(kernel_size=4, stride=4),
             )
-        self.fpns = nn.ModuleList([fpn1, fpn2, fpn3, fpn4])
         # weight initialization
-        self.apply(self._init_weights)
-        self.fix_init_weight()
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
+        self.init_weights(pretrained=self.pretrained)
 
     def fix_init_weight(self):
         def rescale(param, layer_id):
@@ -301,6 +337,32 @@ class MAE(nn.Module):
         for layer_id, layer in enumerate(self.blocks):
             rescale(layer.attn.proj.weight.data, layer_id + 1)
             rescale(layer.mlp.fc2.weight.data, layer_id + 1)
+
+    def init_weights(self, pretrained=None):
+        """Initialize the weights in backbone.
+
+        Args:
+            pretrained (str, optional): Path to pre-trained weights.
+                Defaults to None.
+        """
+
+        def _init_weights(m):
+            if isinstance(m, nn.Linear):
+                trunc_normal_(m.weight, std=.02)
+                if isinstance(m, nn.Linear) and m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.LayerNorm):
+                nn.init.constant_(m.bias, 0)
+                nn.init.constant_(m.weight, 1.0)
+
+        if isinstance(pretrained, str):
+            self.apply(_init_weights)
+            logger = get_root_logger()
+            load_checkpoint(self, pretrained, strict=False, logger=logger)
+        elif pretrained is None:
+            self.apply(_init_weights)
+        else:
+            raise TypeError('pretrained must be a str or None')
 
     def get_num_layers(self):
         return len(self.blocks)
@@ -334,7 +396,6 @@ class MAE(nn.Module):
     def forward_features(self, x):
         B = x.size(0)
         x, (Hp, Wp) = self.patch_embed(x)
-        x = self.patch_embed(x)
 
         # stole cls_tokens impl from Phil Wang, thanks
         cls_tokens = self.cls_token.expand(B, -1, -1)
@@ -358,11 +419,11 @@ class MAE(nn.Module):
             if i in self.out_indices:
                 xp = x[:, 1:, :].permute(0, 2, 1).reshape(B, -1, Hp, Wp)
                 features.append(xp.contiguous())
-        outs = []
-        for fpn, feat in zip(features, self.fpns):
-            outs.append(fpn(feat))
+        ops = [self.fpn1, self.fpn2, self.fpn3, self.fpn4]
+        for i in range(len(features)):
+            features[i] = ops[i](features[i])
 
-        return tuple(outs)
+        return tuple(features)
 
     def forward(self, x):
         return self.forward_features(x)

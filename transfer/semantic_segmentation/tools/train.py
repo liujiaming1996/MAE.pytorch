@@ -17,8 +17,7 @@ from mmseg.datasets import build_dataset
 from mmseg.models import build_segmentor
 from mmseg.utils import collect_env, get_root_logger
 
-from backbone import beit
-
+from backbone import BEiT, MAE
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a segmentor')
@@ -152,6 +151,7 @@ def main():
             CLASSES=datasets[0].CLASSES,
             PALETTE=datasets[0].PALETTE)
     # add an attribute for visualization convenience
+    torch.autograd.set_detect_anomaly(True)
     model.CLASSES = datasets[0].CLASSES
     train_segmentor(
         model,
