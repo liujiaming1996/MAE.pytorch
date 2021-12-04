@@ -17,55 +17,78 @@ from einops import rearrange
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 
-def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, loss_scaler, max_norm: float = 0, patch_size: int = 16, 
-                    normlize_target: bool = True, log_writer=None, lr_scheduler=None, start_steps=None,
-                    lr_schedule_values=None, wd_schedule_values=None):
+def train_one_epoch(model: torch.nn.Module,
+                    data_loader: Iterable,
+                    optimizer: torch.optim.Optimizer,
+                    device: torch.device,
+                    epoch: int,
+                    loss_scaler,
+                    max_norm: float = 0,
+                    patch_size: int = 16,
+                    normlize_target: bool = True,
+                    log_writer=None,
+                    lr_scheduler=None,
+                    start_steps=None,
+                    lr_schedule_values=None,
+                    wd_schedule_values=None):
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
-    metric_logger.add_meter('min_lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
+    metric_logger.add_meter(
+        'lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
+    metric_logger.add_meter(
+        'min_lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     header = 'Epoch: [{}]'.format(epoch)
-    print_freq = 50
+    print_freq = 100
 
     loss_func = nn.MSELoss()
 
-    for step, (batch, _) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for step, (images, _) in enumerate(
+            metric_logger.log_every(data_loader, print_freq, header)):
         # assign learning rate & weight decay for each step
         it = start_steps + step  # global training iteration
         if lr_schedule_values is not None or wd_schedule_values is not None:
-            for i, param_group in enumerate(optimizer.param_groups):
+            for _, param_group in enumerate(optimizer.param_groups):
                 if lr_schedule_values is not None:
-                    param_group["lr"] = lr_schedule_values[it] * param_group["lr_scale"]
-                if wd_schedule_values is not None and param_group["weight_decay"] > 0:
+                    param_group["lr"] = lr_schedule_values[it] * param_group[
+                        "lr_scale"]
+                if wd_schedule_values is not None and param_group[
+                        "weight_decay"] > 0:
                     param_group["weight_decay"] = wd_schedule_values[it]
 
-        images, bool_masked_pos = batch
         images = images.to(device, non_blocking=True)
-        bool_masked_pos = bool_masked_pos.to(device, non_blocking=True).flatten(1).to(torch.bool)
 
         # import pdb; pdb.set_trace()
         with torch.no_grad():
             # calculate the predict label
-            mean = torch.as_tensor(IMAGENET_DEFAULT_MEAN).to(device)[None, :, None, None]
-            std = torch.as_tensor(IMAGENET_DEFAULT_STD).to(device)[None, :, None, None]
-            unnorm_images = images * std + mean  # in [0, 1]
+            mean = torch.as_tensor(IMAGENET_DEFAULT_MEAN, device=device)
+            std = torch.as_tensor(IMAGENET_DEFAULT_STD, device=device)
+            mean = mean.reshape(1, -1, 1, 1)
+            std = std.reshape(1, -1, 1, 1)
+            unnorm_images = images * std + mean  # re-norm into [0, 1]
 
             if normlize_target:
-                images_squeeze = rearrange(unnorm_images, 'b c (h p1) (w p2) -> b (h w) (p1 p2) c', p1=patch_size, p2=patch_size)
-                images_norm = (images_squeeze - images_squeeze.mean(dim=-2, keepdim=True)
-                    ) / (images_squeeze.var(dim=-2, unbiased=True, keepdim=True).sqrt() + 1e-6)
+                images_squeeze = rearrange(
+                    unnorm_images,
+                    'b c (h p1) (w p2) -> b (h w) (p1 p2) c',
+                    p1=patch_size,
+                    p2=patch_size)
+                images_norm = (images_squeeze - images_squeeze.mean(
+                    dim=-2, keepdim=True)) / (images_squeeze.var(
+                        dim=-2, unbiased=True, keepdim=True).sqrt() + 1e-6)
                 # we find that the mean is about 0.48 and standard deviation is about 0.08.
                 images_patch = rearrange(images_norm, 'b n p c -> b n (p c)')
             else:
-                images_patch = rearrange(unnorm_images, 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_size, p2=patch_size)
+                images_patch = rearrange(
+                    unnorm_images,
+                    'b c (h p1) (w p2) -> b (h w) (p1 p2 c)',
+                    p1=patch_size,
+                    p2=patch_size)
 
-            B, _, C = images_patch.shape
-            labels = images_patch[bool_masked_pos].reshape(B, -1, C)
+            # B, _, C = images_patch.shape
+            # labels = images_patch[bool_masked_pos].reshape(B, -1, C)
 
         with torch.cuda.amp.autocast():
-            outputs = model(images, bool_masked_pos)
-            loss = loss_func(input=outputs, target=labels)
+            loss = model(images, images_patch)
 
         loss_value = loss.item()
 
@@ -75,9 +98,13 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
 
         optimizer.zero_grad()
         # this attribute is added by timm on one optimizer (adahessian)
-        is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
-        grad_norm = loss_scaler(loss, optimizer, clip_grad=max_norm,
-                                parameters=model.parameters(), create_graph=is_second_order)
+        is_second_order = hasattr(
+            optimizer, 'is_second_order') and optimizer.is_second_order
+        grad_norm = loss_scaler(loss,
+                                optimizer,
+                                clip_grad=max_norm,
+                                parameters=model.parameters(),
+                                create_graph=is_second_order)
         loss_scale_value = loss_scaler.state_dict()["scale"]
 
         torch.cuda.synchronize()

@@ -1,18 +1,16 @@
 set -x
 # Set the path to save checkpoints
-OUTPUT_DIR='exp/pretrain/mae_800ep_bs4096_base_size224_patch16_mask75_decdepth8_decdim512_norm_pos2d_mocoinit'
+OUTPUT_DIR='exp/pretrain/mae_800ep_bs4096_base_size224_patch16_mask75_decdepth8_decdim512_norm_pos2d_mmseg'
 # path to imagenet-1k train set
 DATA_PATH='./data/lmdb/train.lmdb'
 
-
-# batch_size can be adjusted according to the graphics card
-OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 run_mae_pretraining.py \
+torchrun --standalone --nnodes=1 --nproc_per_node=8 main_unsup.py \
         --data_path ${DATA_PATH} \
         --normlize_target True \
         --mask_ratio 0.75 \
         --model pretrain_mae_base_patch16_224 \
         --batch_size 512 \
-	  --num_workers 8 \
+	--num_workers 8 \
         --opt adamw \
         --opt_betas 0.9 0.95 \
         --warmup_epochs 40 \

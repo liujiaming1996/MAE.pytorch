@@ -19,7 +19,7 @@ from .masking_generator import RandomMaskingGenerator
 from .dataset_folder import ImageFolder, ImageFolderLMDB
 
 
-class DataAugmentationForMAE(object):
+class DataAugmentation(object):
     def __init__(self, args):
         imagenet_default_mean_and_std = args.imagenet_default_mean_and_std
         mean = IMAGENET_INCEPTION_MEAN if not imagenet_default_mean_and_std else IMAGENET_DEFAULT_MEAN
@@ -33,23 +33,16 @@ class DataAugmentationForMAE(object):
                 std=torch.tensor(std))
         ])
 
-        self.masked_position_generator = RandomMaskingGenerator(
-            args.window_size, args.mask_ratio
-        )
-
     def __call__(self, image):
-        return self.transform(image), self.masked_position_generator()
+        return self.transform(image)
 
     def __repr__(self):
-        repr = "(DataAugmentationForBEiT,\n"
-        repr += "  transform = %s,\n" % str(self.transform)
-        repr += "  Masked position generator = %s,\n" % str(self.masked_position_generator)
-        repr += ")"
+        repr = "transform = %s,\n" % str(self.transform)
         return repr
 
 
 def build_pretraining_dataset(args):
-    transform = DataAugmentationForMAE(args)
+    transform = DataAugmentation(args)
     print("Data Aug = %s" % str(transform))
     # return ImageFolder(args.data_path, transform=transform)
     return ImageFolderLMDB(args.data_path, transform=transform)
