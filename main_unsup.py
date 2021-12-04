@@ -22,11 +22,10 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.utils.data as data
 
-from model import create_model
-
 import utils.utils as utils
 from dataset.datasets import build_pretraining_dataset
-from engine.engine_for_pretraining import train_one_epoch
+from engine import pretrain_one_epoch
+from model import create_model
 from utils.optim_factory import create_optimizer
 from utils.utils import NativeScalerWithGradNormCount as NativeScaler
 
@@ -236,7 +235,6 @@ def main(args):
     random_seed(args.seed, utils.get_rank())
     cudnn.benchmark = True
 
-    print(f"Creating model: {args.model}")
     model = create_model(args.model, args.mask_ratio)
     patch_size = (model.encoder.patch_size, model.encoder.patch_size)
     print("Patch size = %s" % str(patch_size))
@@ -330,7 +328,7 @@ def main(args):
             data_loader_train.sampler.set_epoch(epoch)
         if log_writer is not None:
             log_writer.set_step(epoch * num_training_steps_per_epoch)
-        train_stats = train_one_epoch(
+        train_stats = pretrain_one_epoch(
             model,
             data_loader_train,
             optimizer,

@@ -22,11 +22,14 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
 from mmcv.cnn.utils.weight_init import constant_init, trunc_normal_init
+from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.data.mixup import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 from timm.utils import ModelEma
+from torchvision import transforms
 
 import utils.utils as utils
+from dataset.dataset_folder import ImageFolderLMDB
 from dataset.datasets import build_dataset
 from engine import evaluate, finetune_one_epoch
 from model import create_model
@@ -39,8 +42,8 @@ def get_args():
     parser = argparse.ArgumentParser(
         'MAE fine-tuning and evaluation script for image classification',
         add_help=False)
-    parser.add_argument('--batch_size', default=64, type=int)
-    parser.add_argument('--epochs', default=30, type=int)
+    parser.add_argument('--batch_size', default=2048, type=int)
+    parser.add_argument('--epochs', default=90, type=int)
     parser.add_argument('--update_freq', default=1, type=int)
     parser.add_argument('--save_ckpt_freq', default=20, type=int)
 
@@ -68,7 +71,7 @@ def get_args():
                         help='Attention dropout rate (default: 0.)')
     parser.add_argument('--drop_path',
                         type=float,
-                        default=0.1,
+                        default=0.0,
                         metavar='PCT',
                         help='Drop path rate (default: 0.1)')
 
@@ -88,12 +91,12 @@ def get_args():
 
     # Optimizer parameters
     parser.add_argument('--opt',
-                        default='adamw',
+                        default='lars',
                         type=str,
                         metavar='OPTIMIZER',
                         help='Optimizer (default: "adamw"')
     parser.add_argument('--opt_eps',
-                        default=1e-8,
+                        default=None,
                         type=float,
                         metavar='EPSILON',
                         help='Optimizer Epsilon (default: 1e-8)')
@@ -116,7 +119,7 @@ def get_args():
                         help='SGD momentum (default: 0.9)')
     parser.add_argument('--weight_decay',
                         type=float,
-                        default=0.05,
+                        default=0.0,
                         help='weight decay (default: 0.05)')
     parser.add_argument('--weight_decay_end',
                         type=float,
@@ -127,10 +130,10 @@ def get_args():
 
     parser.add_argument('--lr',
                         type=float,
-                        default=1e-3,
+                        default=1e-1,
                         metavar='LR',
                         help='learning rate (default: 1e-3)')
-    parser.add_argument('--layer_decay', type=float, default=0.75)
+    parser.add_argument('--layer_decay', type=float, default=0.0)
 
     parser.add_argument('--warmup_lr',
                         type=float,
@@ -146,7 +149,7 @@ def get_args():
 
     parser.add_argument('--warmup_epochs',
                         type=int,
-                        default=5,
+                        default=10,
                         metavar='N',
                         help='epochs to warmup LR, if scheduler supports')
     parser.add_argument(
@@ -166,14 +169,14 @@ def get_args():
     parser.add_argument(
         '--aa',
         type=str,
-        default='rand-m9-mstd0.5-inc1',
+        default=None,
         metavar='NAME',
         help=
         'Use AutoAugment policy. "v0" or "original". " + "(default: rand-m9-mstd0.5-inc1)'
     ),
     parser.add_argument('--smoothing',
                         type=float,
-                        default=0.1,
+                        default=0.0,
                         help='Label smoothing (default: 0.1)')
     parser.add_argument(
         '--train_interpolation',
@@ -209,11 +212,11 @@ def get_args():
     # * Mixup params
     parser.add_argument('--mixup',
                         type=float,
-                        default=0.8,
+                        default=0.0,
                         help='mixup alpha, mixup enabled if > 0.')
     parser.add_argument('--cutmix',
                         type=float,
-                        default=1.0,
+                        default=0.0,
                         help='cutmix alpha, cutmix enabled if > 0.')
     parser.add_argument(
         '--cutmix_minmax',
@@ -373,7 +376,16 @@ def main(args, ds_init):
 
     cudnn.benchmark = True
 
-    dataset_train, args.nb_classes = build_dataset(is_train=True, args=args)
+    train_transform = transforms.Compose([
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
+    ])
+
+    dataset_train = ImageFolderLMDB(os.path.join(args.data_path, 'train.lmdb'),
+                                    transform=train_transform)
+    args.nb_classes = 1000
     if args.disable_eval_during_finetuning:
         dataset_val = None
     else:
@@ -448,7 +460,13 @@ def main(args, ds_init):
     classifier = nn.Linear(model.embed_dims, args.nb_classes)
     trunc_normal_init(classifier.weight, std=.02)
     constant_init(classifier.bias, 0)
+    classifier = nn.Sequential(nn.BatchNorm1d(model.embed_dims, affine=False),
+                               classifier)
     model.add_module('classifier', classifier)
+    # freeze all layers but the last fc
+    for name, param in model.named_parameters():
+        if 'classifier' not in name:
+            param.requires_grad = False
 
     patch_size = (model.patch_size, model.patch_size)
     print("Patch size = %s" % str(patch_size))
@@ -483,11 +501,11 @@ def main(args, ds_init):
         new_dict = OrderedDict()
         for key in all_keys:
             if key.startswith('backbone.'):
-                new_dict[key[9:]] = checkpoint_model[key]
+                new_dict[key.replace('backbone.', '')] = checkpoint_model[key]
             elif key.startswith('encoder.'):
-                new_dict[key[8:]] = checkpoint_model[key]
+                new_dict[key.replace('encoder.', '')] = checkpoint_model[key]
             else:
-                new_dict[key] = checkpoint_model[key]
+                pass
         checkpoint_model = new_dict
 
         # interpolate position embedding

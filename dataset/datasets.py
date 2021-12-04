@@ -45,7 +45,8 @@ def build_pretraining_dataset(args):
     transform = DataAugmentation(args)
     print("Data Aug = %s" % str(transform))
     # return ImageFolder(args.data_path, transform=transform)
-    return ImageFolderLMDB(args.data_path, transform=transform)
+    root = os.path.join(args.data_path, 'train.lmdb')
+    return ImageFolderLMDB(root, transform=transform)
 
 
 def build_dataset(is_train, args):

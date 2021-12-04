@@ -5,9 +5,9 @@
 # https://github.com/facebookresearch/deit
 # https://github.com/facebookresearch/dino
 # --------------------------------------------------------'
-import torch
-from torch import optim as optim
+import json
 
+import torch
 from timm.optim.adafactor import Adafactor
 from timm.optim.adahessian import Adahessian
 from timm.optim.adamp import AdamP
@@ -18,11 +18,12 @@ from timm.optim.nvnovograd import NvNovoGrad
 from timm.optim.radam import RAdam
 from timm.optim.rmsprop_tf import RMSpropTF
 from timm.optim.sgdp import SGDP
+from torch import optim as optim
 
-import json
+from utils.lars import LARS
 
 try:
-    from apex.optimizers import FusedNovoGrad, FusedAdam, FusedLAMB, FusedSGD
+    from apex.optimizers import FusedAdam, FusedLAMB, FusedNovoGrad, FusedSGD
     has_apex = True
 except ImportError:
     has_apex = False
@@ -128,6 +129,8 @@ def create_optimizer(args, model, get_num_layer=None, get_layer_scale=None, filt
     elif opt_lower == 'momentum':
         opt_args.pop('eps', None)
         optimizer = optim.SGD(parameters, momentum=args.momentum, nesterov=False, **opt_args)
+    elif opt_lower == 'lars':
+        optimizer = LARS(parameters, momentum=args.momentum, **opt_args)
     elif opt_lower == 'adam':
         optimizer = optim.Adam(parameters, **opt_args)
     elif opt_lower == 'adamw':

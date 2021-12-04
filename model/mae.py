@@ -148,6 +148,7 @@ class VisionTransformer(BaseModule):
         self.mask_ratio = mask_ratio
         self.img_size = img_size
         self.patch_size = patch_size
+        self.embed_dims = embed_dims
         self.interpolate_mode = interpolate_mode
         self.norm_eval = norm_eval
         self.with_cp = with_cp
@@ -220,6 +221,9 @@ class VisionTransformer(BaseModule):
     @torch.jit.ignore
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token'}
+
+    def get_num_layers(self):
+        return len(self.layers)
 
     def init_weights(self):
         if (isinstance(self.init_cfg, dict)
@@ -325,9 +329,6 @@ class VisionTransformer(BaseModule):
                     out = x[:, 1:]
                 else:
                     out = x
-                # B, _, C = out.shape
-                # out = out.permute(0, 2, 1).reshape(B, C, hw_shape[0],
-                #                                    hw_shape[1])
                 if self.output_cls_token:
                     out = [out, x[:, 0]]
                 outs.append(out)
@@ -467,10 +468,10 @@ class MAE(BaseModule):
                                         act_cfg=act_cfg,
                                         norm_cfg=norm_cfg,
                                         batch_first=True))
-        self.norm1_name, norm1 = build_norm_layer(norm_cfg,
+        self.norm2_name, norm2 = build_norm_layer(norm_cfg,
                                                   decoder_embed_dims,
-                                                  postfix=1)
-        self.add_module(self.norm1_name, norm1)
+                                                  postfix=2)
+        self.add_module(self.norm2_name, norm2)
         self.head = nn.Linear(decoder_embed_dims, decoder_num_classes)
         self.init_weights()
         # L2 Reconstruction Loss

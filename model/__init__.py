@@ -2,6 +2,7 @@ from .mae import MAE, VisionTransformer
 
 
 def create_model(name, mask_ratio):
+    print(f"Creating model: {name}")
     if name == 'pretrain_mae_small_patch16_224':
         model = MAE(
             mask_ratio=mask_ratio,
@@ -49,6 +50,7 @@ def create_model(name, mask_ratio):
             embed_dims=384,
             num_layers=12,
             num_heads=6,
+            output_cls_token=True
         )
     elif name == 'vit_base_patch16_224':
         model = VisionTransformer(
@@ -58,8 +60,9 @@ def create_model(name, mask_ratio):
             embed_dims=768,
             num_layers=12,
             num_heads=12,
+            output_cls_token=True
         )
-    elif name == 'vit_base_patch16_384':
+    elif name == 'vit_large_patch16_384':
         model = VisionTransformer(
             mask_ratio=0,
             img_size=224,
@@ -67,8 +70,9 @@ def create_model(name, mask_ratio):
             embed_dims=1024,
             num_layers=24,
             num_heads=16,
+            output_cls_token=True
         )
     else:
         raise NotImplementedError('Wrong Model Type.')
-    
+
     return model
