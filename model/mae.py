@@ -480,7 +480,7 @@ class MAE(BaseModule):
 
     @property
     def norm1(self):
-        return getattr(self, self.norm1_name)
+        return getattr(self, self.norm2_name)
 
     @torch.jit.ignore
     def no_weight_decay(self):
