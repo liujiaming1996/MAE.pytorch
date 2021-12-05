@@ -22,7 +22,8 @@ def build_2d_sincos_position_embedding(patch_size,
     h, w = patch_size
     grid_w = torch.arange(w, dtype=torch.float32)
     grid_h = torch.arange(h, dtype=torch.float32)
-    grid_w, grid_h = torch.meshgrid(grid_w, grid_h, indexing='ij')
+#     grid_w, grid_h = torch.meshgrid(grid_w, grid_h, indexing='ij')
+    grid_w, grid_h = torch.meshgrid(grid_w, grid_h)
 
     assert embed_dim % 4 == 0, 'Embed dimension must be divisible by 4 for 2D sin-cos position embedding'
     pos_dim = embed_dim // 4

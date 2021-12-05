@@ -29,6 +29,11 @@ from model import create_model
 from utils.optim_factory import create_optimizer
 from utils.utils import NativeScalerWithGradNormCount as NativeScaler
 
+import smdistributed.dataparallel.torch.distributed as dist
+from smdistributed.dataparallel.torch.parallel.distributed import DistributedDataParallel
+
+
+dist.init_process_group()
 
 def get_args():
     parser = argparse.ArgumentParser('MAE pre-training script', add_help=False)
@@ -78,7 +83,7 @@ def get_args():
                         help='Optimizer Epsilon (default: 1e-8)')
     parser.add_argument(
         '--opt_betas',
-        default=None,
+        default=[0.9, 0.95],
         type=float,
         nargs='+',
         metavar='BETA',
@@ -149,7 +154,7 @@ def get_args():
 
     # Dataset parameters
     parser.add_argument('--data_path',
-                        default='./ImageNet/lmdb/train.lmdb',
+                        default=os.environ['SM_CHANNEL_TRAIN'],
                         type=str,
                         help='dataset path')
     parser.add_argument('--imagenet_default_mean_and_std',
@@ -191,13 +196,13 @@ def get_args():
                         help='')
     parser.set_defaults(pin_mem=True)
 
-    # distributed training parameters
-    parser.add_argument('--world_size',
-                        default=1,
-                        type=int,
-                        help='number of distributed processes')
+#     # distributed training parameters
+#     parser.add_argument('--world_size',
+#                         default=1,
+#                         type=int,
+#                         help='number of distributed processes')
     # parser.add_argument('--local_rank', default=-1, type=int)
-    parser.add_argument('--dist_on_itp', action='store_true')
+#     parser.add_argument('--dist_on_itp', action='store_true')
     parser.add_argument('--dist_url',
                         default='env://',
                         help='url used to set up distributed training')
@@ -211,28 +216,15 @@ def random_seed(seed=42, rank=0):
     # random.seed(seed + rank)
 
 
-def get_model(args):
-    print(f"Creating model: {args.model}")
-    model = create_model(
-        args.model,
-        pretrained=False,
-        drop_path_rate=args.drop_path,
-        drop_block_rate=None,
-    )
-
-    return model
-
-
 def main(args):
     utils.init_distributed_mode(args)
-
+#     args.output_dir = os.path.join(os.environ['SM_MODEL_DIR'], args.output_dir)
     print(args)
 
-    args.local_rank = int(os.environ["LOCAL_RANK"])
     device = torch.device(args.device)
 
     # fix the seed for reproducibility
-    random_seed(args.seed, utils.get_rank())
+    random_seed(args.seed, args.rank)
     cudnn.benchmark = True
 
     model = create_model(args.model, args.mask_ratio)
@@ -290,7 +282,7 @@ def main(args):
           (total_batch_size * num_training_steps_per_epoch))
 
     if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(
+        model = DistributedDataParallel(
             model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
 
