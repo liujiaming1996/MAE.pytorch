@@ -30,7 +30,7 @@ from utils.optim_factory import create_optimizer
 from utils.utils import NativeScalerWithGradNormCount as NativeScaler
 
 import smdistributed.dataparallel.torch.distributed as dist
-from smdistributed.dataparallel.torch.parallel.distributed import DistributedDataParallel
+from smdistributed.dataparallel.torch.parallel import DistributedDataParallel
 
 
 dist.init_process_group()

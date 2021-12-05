@@ -44,7 +44,7 @@ def build_2d_sincos_position_embedding(patch_size,
     return pos_embed
 
 
-class VisionTransformer(BaseModule):
+class VisionTransformer(nn.Module):
     """Vision Transformer.
 
     This backbone is the implementation of `An Image is Worth 16x16 Words:
@@ -117,12 +117,8 @@ class VisionTransformer(BaseModule):
                  num_fcs=2,
                  norm_eval=False,
                  with_cp=False,
-                 pretrained=None,
-                 init_cfg=dict(type='Kaiming',
-                               layer='Conv2d',
-                               mode='fan_in',
-                               nonlinearity='linear')):
-        super(VisionTransformer, self).__init__(init_cfg=init_cfg)
+                 pretrained=None):
+        super(VisionTransformer, self).__init__()
 
         if isinstance(img_size, int):
             img_size = to_2tuple(img_size)
@@ -136,15 +132,6 @@ class VisionTransformer(BaseModule):
         if output_cls_token:
             assert with_cls_token is True, f'with_cls_token must be True if' \
                 f'set output_cls_token to True, but got {with_cls_token}'
-
-        assert not (init_cfg and pretrained), \
-            'init_cfg and pretrained cannot be set at the same time'
-        if isinstance(pretrained, str):
-            warnings.warn('DeprecationWarning: pretrained is deprecated, '
-                          'please use "init_cfg" instead')
-            self.init_cfg = dict(type='Pretrained', checkpoint=pretrained)
-        elif pretrained is not None:
-            raise TypeError('pretrained must be a str or None')
 
         self.mask_ratio = mask_ratio
         self.img_size = img_size
@@ -227,19 +214,13 @@ class VisionTransformer(BaseModule):
         return len(self.layers)
 
     def init_weights(self):
-        if (isinstance(self.init_cfg, dict)
-                and self.init_cfg.get('type') == 'Pretrained'):
-            # logger = get_root_logger()
-            checkpoint = _load_checkpoint(self.init_cfg['checkpoint'],
-                                          map_location='cpu')
-
+        if self.pretrained is not None:
+            checkpoint = _load_checkpoint(self.pretrain, map_location='cpu')
             if 'state_dict' in checkpoint:
                 state_dict = checkpoint['state_dict']
             else:
                 state_dict = checkpoint
             self.load_state_dict(state_dict, True)
-        elif self.init_cfg is not None:
-            super(VisionTransformer, self).init_weights()
         else:
             # We only implement the 'jax_impl' initialization implemented at
             # https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py#L353  # noqa: E501
@@ -254,7 +235,7 @@ class VisionTransformer(BaseModule):
                         else:
                             constant_init(m.bias, 0)
                 elif isinstance(m, nn.Conv2d):
-                    kaiming_init(m.weight, mode='fan_in')
+                    kaiming_init(m.weight, mode='fan_in', nonlinearity='linear')
                     if m.bias is not None:
                         constant_init(m.bias, 0)
                 elif isinstance(m, (_BatchNorm, nn.GroupNorm, nn.LayerNorm)):
@@ -337,7 +318,7 @@ class VisionTransformer(BaseModule):
         return tuple(outs), sort_pos_embed, label
 
 
-class MAE(BaseModule):
+class MAE(nn.Module):
     """Masked Autoencoders
 
     This backbone is the implementation of `An Image is Worth 16x16 Words:
@@ -480,7 +461,7 @@ class MAE(BaseModule):
 
     @property
     def norm1(self):
-        return getattr(self, self.norm1_name)
+        return getattr(self, self.norm2_name)
 
     @torch.jit.ignore
     def no_weight_decay(self):
