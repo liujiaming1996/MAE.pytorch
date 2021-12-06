@@ -219,7 +219,7 @@ def random_seed(seed=42, rank=0):
 
 def main(args):
     utils.init_distributed_mode(args)
-#     args.output_dir = os.path.join(os.environ['SM_MODEL_DIR'], args.output_dir)
+
     print(args)
 
     device = torch.device(args.device)

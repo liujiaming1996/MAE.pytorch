@@ -34,6 +34,12 @@ from utils.optim_factory import (LayerDecayValueAssigner, create_optimizer,
                                  get_parameter_groups)
 from utils.utils import NativeScalerWithGradNormCount as NativeScaler
 
+import smdistributed.dataparallel.torch.distributed as dist
+# from smdistributed.dataparallel.torch.parallel import DistributedDataParallel
+from smdistributed.dataparallel.torch.parallel.distributed import DistributedDataParallel as DDP
+
+
+dist.init_process_group()
 
 def get_args():
     parser = argparse.ArgumentParser(
@@ -324,12 +330,12 @@ def get_args():
     parser.set_defaults(pin_mem=True)
 
     # distributed training parameters
-    parser.add_argument('--world_size',
-                        default=1,
-                        type=int,
-                        help='number of distributed processes')
-    parser.add_argument('--local_rank', default=-1, type=int)
-    parser.add_argument('--dist_on_itp', action='store_true')
+    # parser.add_argument('--world_size',
+    #                     default=1,
+    #                     type=int,
+    #                     help='number of distributed processes')
+    # parser.add_argument('--local_rank', default=-1, type=int)
+    # parser.add_argument('--dist_on_itp', action='store_true')
     parser.add_argument('--dist_url',
                         default='env://',
                         help='url used to set up distributed training')
@@ -586,8 +592,9 @@ def main(args, ds_init):
         assert model.gradient_accumulation_steps() == args.update_freq
     else:
         if args.distributed:
-            model = torch.nn.parallel.DistributedDataParallel(
-                model, device_ids=[args.gpu], find_unused_parameters=False)
+            # model = torch.nn.parallel.DistributedDataParallel(
+            #     model, device_ids=[args.gpu], find_unused_parameters=False)
+            model = DDP(model, device_ids=[args.gpu], broadcast_buffers=False)
             model_without_ddp = model.module
 
         optimizer = create_optimizer(args,

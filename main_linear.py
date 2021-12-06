@@ -37,6 +37,12 @@ from utils.optim_factory import (LayerDecayValueAssigner, create_optimizer,
                                  get_parameter_groups)
 from utils.utils import NativeScalerWithGradNormCount as NativeScaler
 
+import smdistributed.dataparallel.torch.distributed as dist
+# from smdistributed.dataparallel.torch.parallel import DistributedDataParallel
+from smdistributed.dataparallel.torch.parallel.distributed import DistributedDataParallel as DDP
+
+
+dist.init_process_group()
 
 def get_args():
     parser = argparse.ArgumentParser(
