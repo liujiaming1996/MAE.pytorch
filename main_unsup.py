@@ -30,7 +30,8 @@ from utils.optim_factory import create_optimizer
 from utils.utils import NativeScalerWithGradNormCount as NativeScaler
 
 import smdistributed.dataparallel.torch.distributed as dist
-from smdistributed.dataparallel.torch.parallel import DistributedDataParallel
+# from smdistributed.dataparallel.torch.parallel import DistributedDataParallel
+from smdistributed.dataparallel.torch.parallel.distributed import DistributedDataParallel as DDP
 
 
 dist.init_process_group()
@@ -282,8 +283,9 @@ def main(args):
           (total_batch_size * num_training_steps_per_epoch))
 
     if args.distributed:
-        model = DistributedDataParallel(
-            model, device_ids=[args.gpu], find_unused_parameters=True)
+#         model = DistributedDataParallel(
+#             model, device_ids=[args.gpu], find_unused_parameters=True)
+        model = DDP(model, device_ids=[args.gpu], broadcast_buffers=False)
         model_without_ddp = model.module
 
     optimizer = create_optimizer(args, model_without_ddp)
